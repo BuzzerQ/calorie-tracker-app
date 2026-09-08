@@ -21,19 +21,14 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
 // 2. GEMINI AI PARSER (Direct REST API Call)
 // ==========================================
 async function analyzeFoodInput(text, file) {
-    // GANTI BARIS ENDPOINT MENJADI INI:
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`;
 
     const contentsParts = [];
 
-    // 1. Jika ada input teks
     if (text) {
-        contentsParts.push({
-            text: `Hitung kalori dan makronutrisi dari makanan berikut: "${text}"`
-        });
+        contentsParts.push({ text: `Hitung kalori dan makronutrisi dari makanan berikut: "${text}"` });
     }
 
-    // 2. Jika ada input gambar
     if (file) {
         const base64Data = await fileToBase64(file);
         contentsParts.push({
@@ -43,13 +38,10 @@ async function analyzeFoodInput(text, file) {
             }
         });
         if (!text) {
-            contentsParts.push({
-                text: "Analisis foto makanan ini, estimasi porsi dan hitung total kalorinya."
-            });
+            contentsParts.push({ text: "Analisis foto makanan ini, estimasi porsi dan hitung total kalorinya." });
         }
     }
 
-    // Payload Request ke Gemini
     const payload = {
         contents: [{ parts: contentsParts }],
         systemInstruction: {
@@ -57,21 +49,34 @@ async function analyzeFoodInput(text, file) {
                 text: "Kamu adalah ahli nutrisi. Estimasi nilai kalori dan makronutrisi makanan secara realistis. Selalu kembalikan respon HANYA berupa JSON valid dengan format persis seperti ini: {\"food_name\": string, \"serving_qty\": number, \"serving_unit\": string, \"calories\": number, \"protein_g\": number, \"carbs_g\": number, \"fat_g\": number}"
             }]
         },
-        generationConfig: {
-            responseMimeType: "application/json"
-        }
+        generationConfig: { responseMimeType: "application/json" }
     };
 
-    // Panggil REST API Google Gemini
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+    // Logika Auto-Retry jika Server Gemini High Demand (Maksimal 3x percobaan)
+    let response;
+    let retries = 3;
+    let delay = 2000; // Tunggu 2 detik antar percobaan
+
+    while (retries > 0) {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 503 || response.status === 429) {
+            retries--;
+            if (retries === 0) break;
+            await new Promise(res => setTimeout(res, delay));
+            delay *= 1.5; // Menaikkan waktu tunggu bertahap
+        } else {
+            break;
+        }
+    }
 
     if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Gemini API Error: ${errorData.error?.message || response.statusText}`);
+        throw new Error(errorData.error?.message || response.statusText);
     }
 
     const resultData = await response.json();
