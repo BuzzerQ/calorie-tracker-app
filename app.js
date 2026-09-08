@@ -3,9 +3,9 @@ import { GoogleGenAI, Type } from '@google/genai';
 // ==========================================
 // 1. CONFIGURATION (Ganti dengan API Key kamu)
 // ==========================================
-const SUPABASE_URL = 'https://XXXXXXXXXXXXXX.supabase.co'; 
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsIn...'; 
-const GEMINI_API_KEY = 'AIzaSy...'; 
+const SUPABASE_URL = 'https://haextoclppbqphsnvvap.supabase.co/rest/v1/'; 
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZXh0b2NscHBicXBoc252dmFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MjI1MDUsImV4cCI6MjEwNDM5ODUwNX0.IBG7TrdoznZlu0qEBdzN2ZFHrG85Sp0Usu_SLc6xvhw'; 
+const GEMINI_API_KEY = 'AQ.Ab8RN6JKPjegHOw3AyAY6wlo1v9fdC9lljQo2dCqj-mVzmqV2g'; 
 
 // Inisialisasi SDK Supabase & Gemini
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
