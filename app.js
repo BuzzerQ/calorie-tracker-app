@@ -1,11 +1,10 @@
 // ==========================================
-// 1. CONFIGURATION & SETUP
+// 1. CONFIGURATION & HYBRID ENVIRONMENT
 // ==========================================
 
-// Membaca dari config.js (Lokal) atau Vercel Environment Variables
-const SUPABASE_URL = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_URL : '';
-const SUPABASE_ANON_KEY = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_ANON_KEY : '';
-const GEMINI_API_KEY = typeof CONFIG !== 'undefined' ? CONFIG.GEMINI_API_KEY : '';
+// Supabase Credentials (Aman di-client side karena dilindungi RLS)
+const SUPABASE_URL = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_URL : 'https://haextoclppbqphsnvvap.supabase.co'; // Ganti dengan URL Supabase milikmu jika di Vercel
+const SUPABASE_ANON_KEY = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_ANON_KEY : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZXh0b2NscHBicXBoc252dmFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MjI1MDUsImV4cCI6MjEwNDM5ODUwNX0.IBG7TrdoznZlu0qEBdzN2ZFHrG85Sp0Usu_SLc6xvhw';     // Ganti dengan Anon Key Supabase milikmu jika di Vercel
 
 // Tanggal Hari Ini (Format YYYY-MM-DD)
 const TODAY_DATE = new Date().toISOString().split('T')[0];
@@ -14,7 +13,7 @@ const TODAY_DATE = new Date().toISOString().split('T')[0];
 let weightChartInstance = null;
 let calorieChartInstance = null;
 
-// Inisialisasi Supabase Client secara Aman
+// Inisialisasi Supabase Client
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined') {
     supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -74,14 +73,16 @@ function getUserProfile() {
 }
 
 // ==========================================
-// 3. GEMINI AI PARSER (Model 3.6 Flash + Auto-Retry)
+// 3. GEMINI AI PARSER (Hybrid: Live Server vs Vercel)
 // ==========================================
 async function analyzeFoodInput(text, file) {
-    if (!GEMINI_API_KEY) {
-        throw new Error("API Key Gemini belum terpasang di config.js!");
-    }
+    // Cek apakah ada config.js (Mode Live Server/Lokal) atau Vercel Production
+    const isLocal = typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY;
 
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const endpoint = isLocal
+        ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`
+        : '/api/analyze';
+
     const contentsParts = [];
 
     if (text) contentsParts.push({ text: `Hitung kalori dan makronutrisi dari makanan berikut: "${text}"` });
@@ -101,26 +102,15 @@ async function analyzeFoodInput(text, file) {
         generationConfig: { responseMimeType: "application/json" }
     };
 
-    // Auto-retry jika server Gemini sedang mengalami High Demand
-    let response, retries = 3, delay = 2000;
-    while (retries > 0) {
-        response = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (response.status === 503 || response.status === 429) {
-            retries--;
-            if (retries === 0) break;
-            await new Promise(res => setTimeout(res, delay));
-            delay *= 1.5;
-        } else break;
-    }
+    let response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || response.statusText);
+        throw new Error(errorData.error?.message || errorData.error || response.statusText);
     }
 
     const resultData = await response.json();
@@ -390,14 +380,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const thigh = parseFloat(document.getElementById('thighInput').value) || null;
 
             if (supabase) {
-                const { error } = await supabase.from('body_metrics').insert([{
+                // MENGGUNAKAN .upsert() DENGAN onConflict: 'logged_date'
+                const { error } = await supabase.from('body_metrics').upsert([{
                     weight_kg: weight,
                     waist_cm: waist,
                     chest_cm: chest,
                     biceps_cm: biceps,
                     thigh_cm: thigh,
                     logged_date: TODAY_DATE
-                }]);
+                }], { onConflict: 'logged_date' });
 
                 if (error) alert("Gagal menyimpan berat badan: " + error.message);
                 else {
