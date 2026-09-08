@@ -1,11 +1,26 @@
 // ==========================================
-// 1. CONFIGURATION
+// 1. CONFIGURATION & SETUP
 // ==========================================
 
-// Hanya mengambil nilai dari config.js (Lokal) atau Vercel Environment Variables
+// Membaca dari config.js (Lokal) atau Vercel Environment Variables
 const SUPABASE_URL = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_URL : '';
 const SUPABASE_ANON_KEY = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_ANON_KEY : '';
 const GEMINI_API_KEY = typeof CONFIG !== 'undefined' ? CONFIG.GEMINI_API_KEY : '';
+
+// Tanggal Hari Ini (Format YYYY-MM-DD)
+const TODAY_DATE = new Date().toISOString().split('T')[0];
+
+// Global Instances untuk Chart.js
+let weightChartInstance = null;
+let calorieChartInstance = null;
+
+// Inisialisasi Supabase Client secara Aman
+let supabase = null;
+if (SUPABASE_URL && SUPABASE_ANON_KEY && typeof window.supabase !== 'undefined') {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+    console.warn("Supabase client belum siap atau konfigurasi belum ditemukan.");
+}
 
 // Helper: Convert File Gambar ke Base64
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
@@ -15,29 +30,65 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
     reader.onerror = (error) => reject(error);
 });
 
+// Helper: Toggle Modal Setting Profile
+window.toggleProfileModal = () => {
+    const modal = document.getElementById('profileModal');
+    if (modal) modal.classList.toggle('hidden');
+};
+
 // ==========================================
-// 2. GEMINI AI PARSER (Direct REST API Call)
+// 2. BMR, TDEE, & BMI CALCULATOR
+// ==========================================
+
+// Rumus Mifflin-St Jeor untuk BMR & TDEE
+function calculateTDEE(weightKg, heightCm, ageYears, gender, activityMultiplier) {
+    if (!weightKg || !heightCm || !ageYears) return 2000; // Default fallback 2000 kcal
+
+    let bmr = (10 * weightKg) + (6.25 * heightCm) - (5 * ageYears);
+    bmr = gender === 'female' ? bmr - 161 : bmr + 5;
+
+    return Math.round(bmr * parseFloat(activityMultiplier || 1.2));
+}
+
+// Hitung Indeks Massa Tubuh (BMI)
+function calculateBMI(weightKg, heightCm) {
+    if (!weightKg || !heightCm) return null;
+    const heightMeters = heightCm / 100;
+    const bmi = (weightKg / (heightMeters * heightMeters)).toFixed(1);
+
+    let status = '';
+    let colorClass = '';
+
+    if (bmi < 18.5) { status = 'Kurus'; colorClass = 'bg-amber-500/20 text-amber-400'; }
+    else if (bmi < 25) { status = 'Normal'; colorClass = 'bg-emerald-500/20 text-emerald-400'; }
+    else if (bmi < 30) { status = 'Gemuk'; colorClass = 'bg-orange-500/20 text-orange-400'; }
+    else { status = 'Obesitas'; colorClass = 'bg-rose-500/20 text-rose-400'; }
+
+    return { bmi, status, colorClass };
+}
+
+// Ambil/Simpan Profil Pengguna dari LocalStorage
+function getUserProfile() {
+    const saved = localStorage.getItem('user_profile');
+    return saved ? JSON.parse(saved) : { age: 25, gender: 'male', height: 170, activity: '1.2' };
+}
+
+// ==========================================
+// 3. GEMINI AI PARSER (Model 3.6 Flash + Auto-Retry)
 // ==========================================
 async function analyzeFoodInput(text, file) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-    const contentsParts = [];
-
-    if (text) {
-        contentsParts.push({ text: `Hitung kalori dan makronutrisi dari makanan berikut: "${text}"` });
+    if (!GEMINI_API_KEY) {
+        throw new Error("API Key Gemini belum terpasang di config.js!");
     }
 
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const contentsParts = [];
+
+    if (text) contentsParts.push({ text: `Hitung kalori dan makronutrisi dari makanan berikut: "${text}"` });
     if (file) {
         const base64Data = await fileToBase64(file);
-        contentsParts.push({
-            inline_data: {
-                mime_type: file.type || 'image/jpeg',
-                data: base64Data
-            }
-        });
-        if (!text) {
-            contentsParts.push({ text: "Analisis foto makanan ini, estimasi porsi dan hitung total kalorinya." });
-        }
+        contentsParts.push({ inline_data: { mime_type: file.type || 'image/jpeg', data: base64Data } });
+        if (!text) contentsParts.push({ text: "Analisis foto makanan ini, estimasi porsi dan hitung total kalorinya." });
     }
 
     const payload = {
@@ -50,11 +101,8 @@ async function analyzeFoodInput(text, file) {
         generationConfig: { responseMimeType: "application/json" }
     };
 
-    // Logika Auto-Retry jika Server Gemini High Demand (Maksimal 3x percobaan)
-    let response;
-    let retries = 3;
-    let delay = 2000; // Tunggu 2 detik antar percobaan
-
+    // Auto-retry jika server Gemini sedang mengalami High Demand
+    let response, retries = 3, delay = 2000;
     while (retries > 0) {
         response = await fetch(endpoint, {
             method: 'POST',
@@ -66,171 +114,333 @@ async function analyzeFoodInput(text, file) {
             retries--;
             if (retries === 0) break;
             await new Promise(res => setTimeout(res, delay));
-            delay *= 1.5; // Menaikkan waktu tunggu bertahap
-        } else {
-            break;
-        }
+            delay *= 1.5;
+        } else break;
     }
 
     if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error?.message || response.statusText);
     }
 
     const resultData = await response.json();
     const jsonText = resultData.candidates[0].content.parts[0].text;
-
     return JSON.parse(jsonText);
 }
 
 // ==========================================
-// 3. DASHBOARD RENDER & DATA FETCHING
+// 4. CHART RENDERERS (Chart.js)
+// ==========================================
+function renderCharts(metricsHistory, calorieHistory) {
+    if (typeof Chart === 'undefined') return;
+
+    // 1. Line Chart Berat Badan
+    const weightCanvas = document.getElementById('weightChart');
+    if (weightCanvas) {
+        const weightCtx = weightCanvas.getContext('2d');
+        if (weightChartInstance) weightChartInstance.destroy();
+
+        const weightLabels = (metricsHistory || []).map(m => m.logged_date).reverse();
+        const weightData = (metricsHistory || []).map(m => m.weight_kg).reverse();
+
+        weightChartInstance = new Chart(weightCtx, {
+            type: 'line',
+            data: {
+                labels: weightLabels,
+                datasets: [{
+                    label: 'Berat (kg)',
+                    data: weightData,
+                    borderColor: '#10b981',
+                    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { display: false } },
+                    y: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { color: '#374151' } }
+                }
+            }
+        });
+    }
+
+    // 2. Bar Chart Kalori Harian
+    const calorieCanvas = document.getElementById('calorieChart');
+    if (calorieCanvas) {
+        const calorieCtx = calorieCanvas.getContext('2d');
+        if (calorieChartInstance) calorieChartInstance.destroy();
+
+        const calLabels = Object.keys(calorieHistory || {}).reverse();
+        const calData = Object.values(calorieHistory || {}).reverse();
+
+        calorieChartInstance = new Chart(calorieCtx, {
+            type: 'bar',
+            data: {
+                labels: calLabels,
+                datasets: [{
+                    label: 'Kalori (kcal)',
+                    data: calData,
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { display: false } },
+                    y: { ticks: { color: '#9ca3af', font: { size: 9 } }, grid: { color: '#374151' } }
+                }
+            }
+        });
+    }
+}
+
+// ==========================================
+// 5. DASHBOARD RENDER & DATA FETCHING
 // ==========================================
 async function loadDashboardData() {
-    // Fetch Log Makanan Hari Ini dari Supabase
-    const { data: logs, error } = await supabase
+    if (!supabase) return;
+
+    const profile = getUserProfile();
+
+    // Fetch Log Makanan Hari Ini
+    const { data: logs } = await supabase
         .from('daily_logs')
         .select('*')
         .eq('logged_date', TODAY_DATE)
         .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error("Gagal mengambil data log:", error);
-        return;
+    // Fetch Metrics untuk Grafik & Status Terakhir
+    const { data: metricsHistory } = await supabase
+        .from('body_metrics')
+        .select('*')
+        .order('logged_date', { ascending: false })
+        .limit(7);
+
+    // Fetch Riwayat Kalori Semua Hari
+    const { data: allLogs } = await supabase
+        .from('daily_logs')
+        .select('logged_date, calories')
+        .order('logged_date', { ascending: false })
+        .limit(50);
+
+    // Hitung Totals Hari Ini
+    const totalConsumed = (logs || []).reduce((sum, item) => sum + item.calories, 0);
+    const totalProtein = (logs || []).reduce((sum, item) => sum + (item.protein_g || 0), 0);
+    const totalCarbs = (logs || []).reduce((sum, item) => sum + (item.carbs_g || 0), 0);
+    const totalFat = (logs || []).reduce((sum, item) => sum + (item.fat_g || 0), 0);
+
+    // Target TDEE Dinamis dari Berat Badan Terakhir
+    const latestWeight = (metricsHistory && metricsHistory.length > 0) ? metricsHistory[0].weight_kg : 70;
+    const targetTDEE = calculateTDEE(latestWeight, profile.height, profile.age, profile.gender, profile.activity);
+
+    const remaining = targetTDEE - totalConsumed;
+    const progressPercent = Math.min((totalConsumed / targetTDEE) * 100, 100);
+
+    // Update UI Ringkasan Kalori
+    const targetCalEl = document.getElementById('targetCal');
+    if (targetCalEl) targetCalEl.innerText = targetTDEE;
+
+    const consumedCalEl = document.getElementById('consumedCal');
+    if (consumedCalEl) consumedCalEl.innerText = totalConsumed;
+
+    const remainingCalEl = document.getElementById('remainingCal');
+    if (remainingCalEl) remainingCalEl.innerText = remaining;
+
+    const progressBarEl = document.getElementById('progressBar');
+    if (progressBarEl) progressBarEl.style.width = `${progressPercent}%`;
+
+    const protEl = document.getElementById('totalProtein');
+    if (protEl) protEl.innerText = `${totalProtein}g`;
+
+    const carbEl = document.getElementById('totalCarbs');
+    if (carbEl) carbEl.innerText = `${totalCarbs}g`;
+
+    const fatEl = document.getElementById('totalFat');
+    if (fatEl) fatEl.innerText = `${totalFat}g`;
+
+    // Update Status BMI Badge
+    const bmiInfo = calculateBMI(latestWeight, profile.height);
+    const bmiBadge = document.getElementById('bmiBadge');
+    if (bmiBadge && bmiInfo) {
+        bmiBadge.innerText = `BMI: ${bmiInfo.bmi} (${bmiInfo.status})`;
+        bmiBadge.className = `text-[10px] font-bold px-2.5 py-1 rounded-full ${bmiInfo.colorClass}`;
     }
 
-    // Hitung Total Kalori Masuk
-    const totalConsumed = logs.reduce((sum, item) => sum + item.calories, 0);
-    const remaining = DAILY_CALORIE_TARGET - totalConsumed;
-    const progressPercent = Math.min((totalConsumed / DAILY_CALORIE_TARGET) * 100, 100);
+    // Rekap Data Kalori per Tanggal untuk Grafik
+    const calorieHistory = {};
+    (allLogs || []).forEach(log => {
+        calorieHistory[log.logged_date] = (calorieHistory[log.logged_date] || 0) + log.calories;
+    });
 
-    // Update DOM Summary
-    document.getElementById('consumedCal').innerText = totalConsumed;
-    document.getElementById('remainingCal').innerText = remaining;
-    document.getElementById('progressBar').style.width = `${progressPercent}%`;
+    // Render Grafik
+    renderCharts(metricsHistory || [], calorieHistory);
 
-    // Ubah warna sisa kalori jika minus/over
-    const remainingEl = document.getElementById('remainingCal');
-    if (remaining < 0) {
-        remainingEl.className = "text-4xl font-extrabold text-red-500 tracking-tight mt-1";
-    } else {
-        remainingEl.className = "text-4xl font-extrabold text-emerald-400 tracking-tight mt-1";
-    }
-
-    // Render Daftar Makanan Hari Ini
+    // Render Daftar Makanan
     const container = document.getElementById('logsContainer');
-    if (logs.length === 0) {
-        container.innerHTML = `<p class="text-xs font-light text-gray-500 text-center py-2">Belum ada makanan di-log hari ini.</p>`;
-    } else {
-        container.innerHTML = logs.map(item => `
-      <div class="flex justify-between items-center bg-gray-900 p-3 rounded-xl border border-gray-700/70">
-        <div>
-          <div class="font-medium text-gray-200 text-xs">${item.food_name}</div>
-          <div class="text-[10px] font-light text-gray-400">P: ${item.protein_g}g | K: ${item.carbs_g}g | L: ${item.fat_g}g</div>
+    if (container) {
+        if (!logs || logs.length === 0) {
+            container.innerHTML = `<p class="text-xs font-light text-gray-500 text-center py-2">Belum ada makanan di-log hari ini.</p>`;
+        } else {
+            container.innerHTML = logs.map(item => `
+        <div class="flex justify-between items-center bg-gray-900 p-3 rounded-xl border border-gray-700/70">
+          <div>
+            <div class="font-medium text-gray-200 text-xs">${item.food_name}</div>
+            <div class="text-[10px] font-light text-gray-400">P: ${item.protein_g}g | K: ${item.carbs_g}g | L: ${item.fat_g}g</div>
+          </div>
+          <div class="flex items-center gap-3">
+            <span class="font-bold text-emerald-400 text-xs">${item.calories} kcal</span>
+            <button onclick="deleteLog('${item.id}')" class="text-xs text-red-400 hover:text-red-300 transition">✕</button>
+          </div>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="font-bold text-emerald-400 text-xs">${item.calories} kcal</span>
-          <button onclick="deleteLog('${item.id}')" class="text-xs text-red-400 hover:text-red-300 transition">✕</button>
-        </div>
-      </div>
-    `).join('');
+      `).join('');
+        }
     }
 }
 
-// Fungsi Hapus Log Makanan
+// Fungsi Hapus Item Makanan
 window.deleteLog = async function (id) {
+    if (!supabase) return;
     const { error } = await supabase.from('daily_logs').delete().eq('id', id);
     if (!error) loadDashboardData();
 };
 
 // ==========================================
-// 4. EVENT LISTENERS (Form Submission)
+// 6. EVENT LISTENERS
 // ==========================================
 
-// Handle nama file terdeteksi saat foto dipilih
-document.getElementById('foodImage').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    document.getElementById('fileName').innerText = file ? file.name : '';
-});
-
-// Submit Log Makanan
-document.getElementById('foodForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const textInput = document.getElementById('foodText').value.trim();
-    const fileInput = document.getElementById('foodImage').files[0];
-
-    if (!textInput && !fileInput) {
-        alert("Masukkan deskripsi makanan atau unggah foto terlebih dahulu!");
-        return;
+document.addEventListener('DOMContentLoaded', () => {
+    // Indikator Nama File Terpilih
+    const imageInput = document.getElementById('foodImage');
+    if (imageInput) {
+        imageInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            const fileNameEl = document.getElementById('fileName');
+            if (fileNameEl) fileNameEl.innerText = file ? file.name : '';
+        });
     }
 
-    const loadingEl = document.getElementById('loadingStatus');
-    const btnSubmit = document.getElementById('btnLogFood');
+    // Form Log Makanan AI
+    const foodForm = document.getElementById('foodForm');
+    if (foodForm) {
+        foodForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const textInput = document.getElementById('foodText').value.trim();
+            const fileInput = document.getElementById('foodImage').files[0];
 
-    try {
-        loadingEl.classList.remove('hidden');
-        btnSubmit.disabled = true;
+            if (!textInput && !fileInput) return alert("Masukkan deskripsi atau upload foto makanan!");
 
-        // 1. Panggil Gemini AI
-        const result = await analyzeFoodInput(textInput, fileInput);
+            const loadingEl = document.getElementById('loadingStatus');
+            const btnSubmit = document.getElementById('btnLogFood');
 
-        // 2. Simpan ke Supabase
-        const { error } = await supabase.from('daily_logs').insert([{
-            food_name: result.food_name,
-            serving_qty: result.serving_qty,
-            serving_unit: result.serving_unit,
-            calories: result.calories,
-            protein_g: result.protein_g,
-            carbs_g: result.carbs_g,
-            fat_g: result.fat_g,
-            logged_date: TODAY_DATE
-        }]);
+            try {
+                if (loadingEl) loadingEl.classList.remove('hidden');
+                if (btnSubmit) btnSubmit.disabled = true;
 
-        if (error) throw error;
+                const result = await analyzeFoodInput(textInput, fileInput);
 
-        // Reset Form
-        document.getElementById('foodForm').reset();
-        document.getElementById('fileName').innerText = '';
+                if (supabase) {
+                    const { error } = await supabase.from('daily_logs').insert([{
+                        food_name: result.food_name,
+                        serving_qty: result.serving_qty,
+                        serving_unit: result.serving_unit,
+                        calories: result.calories,
+                        protein_g: result.protein_g,
+                        carbs_g: result.carbs_g,
+                        fat_g: result.fat_g,
+                        logged_date: TODAY_DATE
+                    }]);
 
-        // Refresh Tampilan Dashboard
-        await loadDashboardData();
+                    if (error) throw error;
+                }
 
-    } catch (err) {
-        console.error("Gagal memproses makanan:", err);
-        alert(`Gagal menganalisis makanan: ${err.message}`);
-    } finally {
-        loadingEl.classList.add('hidden');
-        btnSubmit.disabled = false;
+                foodForm.reset();
+                const fileNameEl = document.getElementById('fileName');
+                if (fileNameEl) fileNameEl.innerText = '';
+
+                await loadDashboardData();
+
+            } catch (err) {
+                alert(`Gagal menganalisis makanan: ${err.message}`);
+            } finally {
+                if (loadingEl) loadingEl.classList.add('hidden');
+                if (btnSubmit) btnSubmit.disabled = false;
+            }
+        });
     }
-});
 
-// Submit Body Metrics (BB & Ukuran Tubuh)
-document.getElementById('metricsForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+    // Form Simpan Berat Badan & Ukuran Tubuh
+    const metricsForm = document.getElementById('metricsForm');
+    if (metricsForm) {
+        metricsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
 
-    const weight = parseFloat(document.getElementById('weightInput').value);
-    const waist = parseFloat(document.getElementById('waistInput').value) || null;
-    const chest = parseFloat(document.getElementById('chestInput').value) || null;
-    const biceps = parseFloat(document.getElementById('bicepsInput').value) || null;
-    const thigh = parseFloat(document.getElementById('thighInput').value) || null;
+            const weight = parseFloat(document.getElementById('weightInput').value);
+            const waist = parseFloat(document.getElementById('waistInput').value) || null;
+            const chest = parseFloat(document.getElementById('chestInput').value) || null;
+            const biceps = parseFloat(document.getElementById('bicepsInput').value) || null;
+            const thigh = parseFloat(document.getElementById('thighInput').value) || null;
 
-    const { error } = await supabase.from('body_metrics').upsert([{
-        weight_kg: weight,
-        waist_cm: waist,
-        chest_cm: chest,
-        biceps_cm: biceps,
-        thigh_cm: thigh,
-        logged_date: TODAY_DATE
-    }], { onConflict: 'logged_date' });
+            if (supabase) {
+                const { error } = await supabase.from('body_metrics').insert([{
+                    weight_kg: weight,
+                    waist_cm: waist,
+                    chest_cm: chest,
+                    biceps_cm: biceps,
+                    thigh_cm: thigh,
+                    logged_date: TODAY_DATE
+                }]);
 
-    if (error) {
-        console.error("Gagal menyimpan metrics:", error);
-        alert("Gagal menyimpan berat badan.");
-    } else {
-        alert("Progres fisik berhasil disimpan!");
+                if (error) alert("Gagal menyimpan berat badan: " + error.message);
+                else {
+                    metricsForm.reset();
+                    await loadDashboardData();
+                }
+            }
+        });
     }
-});
 
-// Initialize Dashboard On Load
-loadDashboardData();
+    // Form Pengaturan Profil & TDEE
+    const profileForm = document.getElementById('profileForm');
+    if (profileForm) {
+        profileForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+
+            const profile = {
+                age: parseInt(document.getElementById('ageInput').value),
+                gender: document.getElementById('genderInput').value,
+                height: parseFloat(document.getElementById('heightInput').value),
+                activity: document.getElementById('activityInput').value
+            };
+
+            localStorage.setItem('user_profile', JSON.stringify(profile));
+            toggleProfileModal();
+            loadDashboardData();
+        });
+    }
+
+    // Load Saved Profile into Inputs
+    const savedProfile = getUserProfile();
+    const ageInp = document.getElementById('ageInput');
+    if (ageInp) ageInp.value = savedProfile.age;
+
+    const genInp = document.getElementById('genderInput');
+    if (genInp) genInp.value = savedProfile.gender;
+
+    const hgtInp = document.getElementById('heightInput');
+    if (hgtInp) hgtInp.value = savedProfile.height;
+
+    const actInp = document.getElementById('activityInput');
+    if (actInp) actInp.value = savedProfile.activity;
+
+    // Render Dashboard
+    loadDashboardData();
+});

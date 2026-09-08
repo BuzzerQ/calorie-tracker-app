@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calorie Tracker v1.0</title>
+    <title>Calorie Tracker v1.1</title>
 
     <!-- Google Fonts: Poppins -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,56 +12,79 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
 
-    <!-- Tailwind CSS via CDN -->
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Poppins', 'sans-serif'],
-                    },
+                    fontFamily: { sans: ['Poppins', 'sans-serif'] },
                 },
             },
         }
     </script>
 
-    <!-- Supabase JS Client (WAJIB ADA DI HEAD SINI) -->
+    <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <!-- Chart.js CDN untuk Visualisasi Grafik -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen pb-12 antialiased">
 
     <div class="max-w-md mx-auto p-4 space-y-6">
         <!-- Header -->
-        <header class="text-center py-2">
-            <h1 class="text-2xl font-bold tracking-tight text-emerald-400">Calorie Tracker</h1>
-            <p class="text-xs font-light text-gray-400">AI-Powered Daily Tracking</p>
+        <header class="text-center py-2 flex justify-between items-center">
+            <div class="text-left">
+                <h1 class="text-2xl font-bold tracking-tight text-emerald-400">Calorie Tracker</h1>
+                <p class="text-xs font-light text-gray-400">AI-Powered Daily Tracking</p>
+            </div>
+            <button onclick="toggleProfileModal()"
+                class="bg-gray-800 border border-gray-700 hover:bg-gray-700 p-2 rounded-xl text-xs flex items-center gap-1 transition">
+                ⚙️ <span class="font-medium text-gray-300">Pengaturan Target</span>
+            </button>
         </header>
 
-        <!-- CARD 1: Calorie Summary -->
+        <!-- CARD 1: Ringkasan Kalori & Makronutrisi -->
         <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-4">
             <div class="flex justify-between items-center text-xs font-medium">
-                <span class="text-gray-400">Target: <strong id="targetCal"
+                <span class="text-gray-400">Target TDEE: <strong id="targetCal"
                         class="text-white font-semibold">2000</strong> kcal</span>
                 <span class="text-gray-400">Masuk: <strong id="consumedCal"
                         class="text-emerald-400 font-semibold">0</strong> kcal</span>
             </div>
 
-            <!-- Main Remaining Calorie Display -->
-            <div class="text-center py-2">
+            <!-- Sisa Kalori Hari Ini -->
+            <div class="text-center py-1">
                 <span class="text-[11px] font-medium uppercase tracking-wider text-gray-400">Sisa Kalori Hari Ini</span>
                 <div id="remainingCal" class="text-4xl font-extrabold text-emerald-400 tracking-tight mt-1">2000</div>
                 <span class="text-xs font-light text-gray-400">kcal</span>
             </div>
 
-            <!-- Progress Bar -->
+            <!-- Progress Bar Kalori -->
             <div class="w-full bg-gray-700/60 h-3 rounded-full overflow-hidden">
                 <div id="progressBar" class="bg-emerald-500 h-full w-0 transition-all duration-500 rounded-full"></div>
             </div>
+
+            <!-- Info Makronutrisi Harian -->
+            <div class="grid grid-cols-3 gap-2 pt-2 border-t border-gray-700/50 text-center text-xs">
+                <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-700/40">
+                    <span class="text-[10px] text-gray-400 block">Protein</span>
+                    <span id="totalProtein" class="font-bold text-emerald-400">0g</span>
+                </div>
+                <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-700/40">
+                    <span class="text-[10px] text-gray-400 block">Karbo</span>
+                    <span id="totalCarbs" class="font-bold text-amber-400">0g</span>
+                </div>
+                <div class="bg-gray-900/60 p-2 rounded-xl border border-gray-700/40">
+                    <span class="text-[10px] text-gray-400 block">Lemak</span>
+                    <span id="totalFat" class="font-bold text-rose-400">0g</span>
+                </div>
+            </div>
         </div>
 
-        <!-- CARD 2: Quick Input Makanan (Teks & Foto) -->
+        <!-- CARD 2: Quick Input Makanan AI -->
         <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
             <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Tambah Makanan Harian</h2>
 
@@ -72,7 +95,6 @@
                         class="w-full bg-gray-900 border border-gray-700/80 rounded-xl p-3 text-xs font-normal text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition resize-none"></textarea>
                 </div>
 
-                <!-- Input File / Foto -->
                 <div class="flex items-center gap-2">
                     <label
                         class="flex-1 cursor-pointer bg-gray-700/60 hover:bg-gray-700 border border-gray-600/60 rounded-xl p-2.5 text-center text-xs font-medium text-gray-300 flex items-center justify-center gap-2 transition">
@@ -88,33 +110,46 @@
                 </button>
             </form>
 
-            <!-- Status Loading AI -->
             <div id="loadingStatus" class="hidden text-center text-xs font-medium text-emerald-400 animate-pulse pt-1">
                 ✨ AI sedang menganalisis nutrisi makananmu...
             </div>
         </div>
 
-        <!-- CARD 3: Today's Food Logs -->
-        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
-            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Riwayat Makan Hari Ini</h2>
-            <div id="logsContainer" class="space-y-2 text-xs">
-                <p class="text-xs font-light text-gray-500 text-center py-2">Belum ada makanan di-log hari ini.</p>
+        <!-- CARD 3: Grafik Progres (BB & Asupan Kalori) -->
+        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-4">
+            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Grafik Progres Fisik & Kalori</h2>
+
+            <div>
+                <span class="text-[11px] font-medium text-gray-400 block mb-2">Tren Berat Badan (kg)</span>
+                <div class="h-44">
+                    <canvas id="weightChart"></canvas>
+                </div>
+            </div>
+
+            <div class="pt-3 border-t border-gray-700/50">
+                <span class="text-[11px] font-medium text-gray-400 block mb-2">Asupan Kalori Harian (kcal)</span>
+                <div class="h-44">
+                    <canvas id="calorieChart"></canvas>
+                </div>
             </div>
         </div>
 
-        <!-- CARD 4: Daily Body Metrics -->
+        <!-- CARD 4: Log Progres Fisik & Status BMI -->
         <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
-            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Log Progres Fisik Hari Ini</h2>
+            <div class="flex justify-between items-center">
+                <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Log Progres Fisik Hari Ini</h2>
+                <span id="bmiBadge"
+                    class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-gray-700 text-gray-300">BMI: -</span>
+            </div>
 
             <form id="metricsForm" class="space-y-3">
                 <div>
                     <label class="block text-xs font-medium text-gray-400 mb-1">Berat Badan (kg)</label>
                     <input type="number" step="0.1" id="weightInput" placeholder="70.5"
-                        class="w-full bg-gray-900 border border-gray-700/80 rounded-xl p-2.5 text-xs font-normal text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition"
+                        class="w-full bg-gray-900 border border-gray-700/80 rounded-xl p-2.5 text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition"
                         required>
                 </div>
 
-                <!-- Collapsible Body Measurement -->
                 <details class="text-xs font-normal text-gray-400">
                     <summary class="cursor-pointer py-1 font-medium text-emerald-400 hover:underline">
                         + Ukuran Tubuh / Measurement (Optional)
@@ -149,11 +184,69 @@
                 </button>
             </form>
         </div>
+
+        <!-- CARD 5: Riwayat Makanan Hari Ini -->
+        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
+            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Riwayat Makan Hari Ini</h2>
+            <div id="logsContainer" class="space-y-2 text-xs">
+                <p class="text-xs font-light text-gray-500 text-center py-2">Belum ada makanan di-log hari ini.</p>
+            </div>
+        </div>
     </div>
 
-    <!-- Load Konfigurasi Lokal -->
+    <!-- MODAL: Setting Profile & Kalkulator BMR/TDEE -->
+    <div id="profileModal"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-gray-800 border border-gray-700 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-2xl">
+            <div class="flex justify-between items-center border-b border-gray-700/60 pb-3">
+                <h3 class="font-semibold text-sm text-emerald-400">Pengaturan Kalori & Tubuh</h3>
+                <button onclick="toggleProfileModal()" class="text-gray-400 hover:text-white text-xs">✕</button>
+            </div>
+
+            <form id="profileForm" class="space-y-3 text-xs">
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-gray-400 mb-1">Usia (Tahun)</label>
+                        <input type="number" id="ageInput" placeholder="25"
+                            class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-gray-100" required>
+                    </div>
+                    <div>
+                        <label class="block text-gray-400 mb-1">Jenis Kelamin</label>
+                        <select id="genderInput"
+                            class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-gray-100">
+                            <option value="male">Pria</option>
+                            <option value="female">Wanita</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1">Tinggi Badan (cm)</label>
+                    <input type="number" id="heightInput" placeholder="170"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-gray-100" required>
+                </div>
+
+                <div>
+                    <label class="block text-gray-400 mb-1">Tingkat Aktivitas Harian</label>
+                    <select id="activityInput"
+                        class="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-gray-100">
+                        <option value="1.2">Sangat Jarang Olahraga (Sedentary)</option>
+                        <option value="1.375">Ringan (Olahraga 1-3 hari/minggu)</option>
+                        <option value="1.55">Sedang (Olahraga 3-5 hari/minggu)</option>
+                        <option value="1.725">Aktif (Olahraga 6-7 hari/minggu)</option>
+                    </select>
+                </div>
+
+                <button type="submit"
+                    class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl transition mt-2">
+                    Hitung & Simpan Target
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Load File Konfigurasi Lokal & App Logic -->
     <script src="config.js"></script>
-    <!-- Load App Logic -->
     <script type="module" src="app.js"></script>
 </body>
 
