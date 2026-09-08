@@ -21,54 +21,66 @@ const fileToBase64 = (file) => new Promise((resolve, reject) => {
     reader.onerror = (error) => reject(error);
 });
 
+/// ==========================================
+// 2. GEMINI AI PARSER (Direct REST API Call)
 // ==========================================
-// 2. GEMINI AI ANALYSIS FUNCTION
-// ==========================================
-const foodSchema = {
-    type: Type.OBJECT,
-    properties: {
-        food_name: { type: Type.STRING },
-        serving_qty: { type: Type.NUMBER },
-        serving_unit: { type: Type.STRING },
-        calories: { type: Type.INTEGER },
-        protein_g: { type: Type.NUMBER },
-        carbs_g: { type: Type.NUMBER },
-        fat_g: { type: Type.NUMBER },
-    },
-    required: ["food_name", "serving_qty", "serving_unit", "calories", "protein_g", "carbs_g", "fat_g"],
-};
-
 async function analyzeFoodInput(text, file) {
-    const contents = [];
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
+    const contentsParts = [];
+
+    // 1. Jika ada teks
     if (text) {
-        contents.push(`Hitung kalori dan makronutrisi dari makanan ini: "${text}"`);
+        contentsParts.push({
+            text: `Hitung kalori dan makronutrisi dari makanan berikut: "${text}"`
+        });
     }
 
+    // 2. Jika ada gambar
     if (file) {
         const base64Data = await fileToBase64(file);
-        contents.push({
-            inlineData: {
-                data: base64Data,
-                mimeType: file.type || 'image/jpeg'
+        contentsParts.push({
+            inline_data: {
+                mime_type: file.type || 'image/jpeg',
+                data: base64Data
             }
         });
         if (!text) {
-            contents.push("Analisis makanan pada foto ini, estimasi porsi dan hitung total kalorinya.");
+            contentsParts.push({
+                text: "Analisis foto makanan ini, estimasi porsi dan hitung total kalorinya."
+            });
         }
     }
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: contents,
-        config: {
-            responseMimeType: 'application/json',
-            responseSchema: foodSchema,
-            systemInstruction: "Kamu adalah pakar nutrisi. Estimasi nilai kalori dan makronutrisi makanan secara realistis. Selalu kembalikan respon dalam bentuk JSON sesuai schema."
+    // Payload Request ke Gemini
+    const payload = {
+        contents: [{ parts: contentsParts }],
+        systemInstruction: {
+            parts: [{
+                text: "Kamu adalah ahli nutrisi. Estimasi nilai kalori dan makronutrisi makanan secara realistis. Selalu kembalikan respon HANYA berupa JSON valid dengan format persis seperti ini: {\"food_name\": string, \"serving_qty\": number, \"serving_unit\": string, \"calories\": number, \"protein_g\": number, \"carbs_g\": number, \"fat_g\": number}"
+            }]
+        },
+        generationConfig: {
+            responseMimeType: "application/json"
         }
+    };
+
+    // Panggil REST API Google Gemini
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
     });
 
-    return JSON.parse(response.text);
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Gemini API Error: ${errorData.error?.message || response.statusText}`);
+    }
+
+    const resultData = await response.json();
+    const jsonText = resultData.candidates[0].content.parts[0].text;
+
+    return JSON.parse(jsonText);
 }
 
 // ==========================================
