@@ -73,10 +73,9 @@ function getUserProfile() {
 }
 
 // ==========================================
-// 3. GEMINI AI PARSER (Hybrid: Live Server vs Vercel)
+// 3. GEMINI AI PARSER (Hybrid + Auto-Retry)
 // ==========================================
 async function analyzeFoodInput(text, file) {
-    // Cek apakah ada config.js (Mode Live Server/Lokal) atau Vercel Production
     const isLocal = typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY;
 
     const endpoint = isLocal
@@ -102,11 +101,27 @@ async function analyzeFoodInput(text, file) {
         generationConfig: { responseMimeType: "application/json" }
     };
 
-    let response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+    // Mekanisme Auto-Retry jika Server Gemini High Demand (Maksimal 3x percobaan)
+    let response;
+    let retries = 3;
+    let delay = 2000;
+
+    while (retries > 0) {
+        response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 503 || response.status === 429) {
+            retries--;
+            if (retries === 0) break;
+            await new Promise(res => setTimeout(res, delay));
+            delay *= 1.5;
+        } else {
+            break;
+        }
+    }
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
