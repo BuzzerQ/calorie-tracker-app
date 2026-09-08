@@ -2,22 +2,10 @@
 // 1. CONFIGURATION
 // ==========================================
 
-// Ambil dari config.js (Lokal/Dev) jika ada, atau gunakan default/environment placeholder jika di Vercel
-const SUPABASE_URL = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)
-    ? CONFIG.SUPABASE_URL
-    : 'https://haextoclppbqphsnvvap.supabase.co'; // Isikan URL Supabase milikmu
-
-const SUPABASE_ANON_KEY = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON_KEY)
-    ? CONFIG.SUPABASE_ANON_KEY
-    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZXh0b2NscHBicXBoc252dmFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MjI1MDUsImV4cCI6MjEwNDM5ODUwNX0.IBG7TrdoznZlu0qEBdzN2ZFHrG85Sp0Usu_SLc6xvhw';                // Isikan Anon Key Supabase milikmu
-
-const GEMINI_API_KEY = (typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY)
-    ? CONFIG.GEMINI_API_KEY
-    : 'AQ.Ab8RN6K3zozWNFs20cXlQJyt2f9525OqQ_DjtzglQejFngBfpw';                        // Isikan API Key Gemini baru
-
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const DAILY_CALORIE_TARGET = 2000;
-const TODAY_DATE = new Date().toISOString().split('T')[0];
+// Hanya mengambil nilai dari config.js (Lokal) atau Vercel Environment Variables
+const SUPABASE_URL = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_URL : '';
+const SUPABASE_ANON_KEY = typeof CONFIG !== 'undefined' ? CONFIG.SUPABASE_ANON_KEY : '';
+const GEMINI_API_KEY = typeof CONFIG !== 'undefined' ? CONFIG.GEMINI_API_KEY : '';
 
 // Helper: Convert File Gambar ke Base64
 const fileToBase64 = (file) => new Promise((resolve, reject) => {
