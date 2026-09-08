@@ -6,27 +6,148 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calorie Tracker v1.0</title>
 
+    <!-- Google Fonts: Poppins -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Poppins', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script>
 
     <!-- Supabase JS Client -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
-<body class="bg-gray-900 text-gray-100 min-h-screen pb-10">
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen pb-12 antialiased">
 
     <div class="max-w-md mx-auto p-4 space-y-6">
         <!-- Header -->
-        <header class="text-center py-4">
-            <h1 class="text-2xl font-bold text-emerald-400">Calorie Tracker</h1>
-            <p class="text-xs text-gray-400">AI-Powered Daily Tracking</p>
+        <header class="text-center py-2">
+            <h1 class="text-2xl font-bold tracking-tight text-emerald-400">Calorie Tracker</h1>
+            <p class="text-xs font-light text-gray-400">AI-Powered Daily Tracking</p>
         </header>
 
-        <!-- Placeholder Status/App -->
-        <div id="app" class="space-y-4">
-            <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 text-center text-sm text-gray-400">
-                Sedang menghubungkan ke Supabase & Gemini...
+        <!-- CARD 1: Calorie Summary -->
+        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-4">
+            <div class="flex justify-between items-center text-xs font-medium">
+                <span class="text-gray-400">Target: <strong id="targetCal"
+                        class="text-white font-semibold">2000</strong> kcal</span>
+                <span class="text-gray-400">Masuk: <strong id="consumedCal"
+                        class="text-emerald-400 font-semibold">0</strong> kcal</span>
             </div>
+
+            <!-- Main Remaining Calorie Display -->
+            <div class="text-center py-2">
+                <span class="text-[11px] font-medium uppercase tracking-wider text-gray-400">Sisa Kalori Hari Ini</span>
+                <div id="remainingCal" class="text-4xl font-extrabold text-emerald-400 tracking-tight mt-1">2000</div>
+                <span class="text-xs font-light text-gray-400">kcal</span>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="w-full bg-gray-700/60 h-3 rounded-full overflow-hidden">
+                <div id="progressBar" class="bg-emerald-500 h-full w-0 transition-all duration-500 rounded-full"></div>
+            </div>
+        </div>
+
+        <!-- CARD 2: Quick Input Makanan (Teks & Foto) -->
+        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
+            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Tambah Makanan Harian</h2>
+
+            <form id="foodForm" class="space-y-3">
+                <div>
+                    <textarea id="foodText" rows="2"
+                        placeholder="Ketik apa yang kamu makan... (contoh: Nasi goreng 1 porsi pake telur ceplok)"
+                        class="w-full bg-gray-900 border border-gray-700/80 rounded-xl p-3 text-xs font-normal text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500 transition resize-none"></textarea>
+                </div>
+
+                <!-- Input File / Foto -->
+                <div class="flex items-center gap-2">
+                    <label
+                        class="flex-1 cursor-pointer bg-gray-700/60 hover:bg-gray-700 border border-gray-600/60 rounded-xl p-2.5 text-center text-xs font-medium text-gray-300 flex items-center justify-center gap-2 transition">
+                        <span>📷 Pilih / Upload Foto</span>
+                        <input type="file" id="foodImage" accept="image/*" class="hidden">
+                    </label>
+                    <span id="fileName" class="text-xs font-medium text-emerald-400 truncate max-w-[120px]"></span>
+                </div>
+
+                <button type="submit" id="btnLogFood"
+                    class="w-full bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2">
+                    <span>+ Log Makanan dengan AI</span>
+                </button>
+            </form>
+
+            <!-- Status Loading AI -->
+            <div id="loadingStatus" class="hidden text-center text-xs font-medium text-emerald-400 animate-pulse pt-1">
+                ✨ AI sedang menganalisis nutrisi makananmu...
+            </div>
+        </div>
+
+        <!-- CARD 3: Today's Food Logs -->
+        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
+            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Riwayat Makan Hari Ini</h2>
+            <div id="logsContainer" class="space-y-2 text-xs">
+                <p class="text-xs font-light text-gray-500 text-center py-2">Belum ada makanan di-log hari ini.</p>
+            </div>
+        </div>
+
+        <!-- CARD 4: Daily Body Metrics -->
+        <div class="bg-gray-800 p-5 rounded-2xl border border-gray-700/60 shadow-xl space-y-3">
+            <h2 class="text-sm font-semibold text-gray-200 tracking-wide">Log Progres Fisik Hari Ini</h2>
+
+            <form id="metricsForm" class="space-y-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400 mb-1">Berat Badan (kg)</label>
+                    <input type="number" step="0.1" id="weightInput" placeholder="70.5"
+                        class="w-full bg-gray-900 border border-gray-700/80 rounded-xl p-2.5 text-xs font-normal text-gray-100 placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition"
+                        required>
+                </div>
+
+                <!-- Collapsible Body Measurement -->
+                <details class="text-xs font-normal text-gray-400">
+                    <summary class="cursor-pointer py-1 font-medium text-emerald-400 hover:underline">
+                        + Ukuran Tubuh / Measurement (Optional)
+                    </summary>
+                    <div class="grid grid-cols-2 gap-2 pt-2">
+                        <div>
+                            <label class="block text-[10px] font-medium text-gray-400">Pinggang (cm)</label>
+                            <input type="number" step="0.1" id="waistInput" placeholder="80"
+                                class="w-full bg-gray-900 border border-gray-700/80 rounded-lg p-2 text-xs text-gray-100">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-medium text-gray-400">Dada (cm)</label>
+                            <input type="number" step="0.1" id="chestInput" placeholder="95"
+                                class="w-full bg-gray-900 border border-gray-700/80 rounded-lg p-2 text-xs text-gray-100">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-medium text-gray-400">Lengan (cm)</label>
+                            <input type="number" step="0.1" id="bicepsInput" placeholder="32"
+                                class="w-full bg-gray-900 border border-gray-700/80 rounded-lg p-2 text-xs text-gray-100">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-medium text-gray-400">Paha (cm)</label>
+                            <input type="number" step="0.1" id="thighInput" placeholder="55"
+                                class="w-full bg-gray-900 border border-gray-700/80 rounded-lg p-2 text-xs text-gray-100">
+                        </div>
+                    </div>
+                </details>
+
+                <button type="submit"
+                    class="w-full bg-gray-700/70 hover:bg-gray-700 text-gray-200 font-medium py-2 rounded-xl text-xs transition">
+                    Simpan Progres Fisik
+                </button>
+            </form>
         </div>
     </div>
 
