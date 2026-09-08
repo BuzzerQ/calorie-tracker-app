@@ -5,15 +5,15 @@
 // Ambil dari config.js (Lokal/Dev) jika ada, atau gunakan default/environment placeholder jika di Vercel
 const SUPABASE_URL = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)
     ? CONFIG.SUPABASE_URL
-    : 'https://abcdefg12345.supabase.co'; // Isikan URL Supabase milikmu
+    : 'https://haextoclppbqphsnvvap.supabase.co'; // Isikan URL Supabase milikmu
 
 const SUPABASE_ANON_KEY = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON_KEY)
     ? CONFIG.SUPABASE_ANON_KEY
-    : 'eyJhbGciOi...';                // Isikan Anon Key Supabase milikmu
+    : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZXh0b2NscHBicXBoc252dmFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MjI1MDUsImV4cCI6MjEwNDM5ODUwNX0.IBG7TrdoznZlu0qEBdzN2ZFHrG85Sp0Usu_SLc6xvhw';                // Isikan Anon Key Supabase milikmu
 
 const GEMINI_API_KEY = (typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY)
     ? CONFIG.GEMINI_API_KEY
-    : 'AIzaSy...';                        // Isikan API Key Gemini baru
+    : 'AQ.Ab8RN6K3zozWNFs20cXlQJyt2f9525OqQ_DjtzglQejFngBfpw';                        // Isikan API Key Gemini baru
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DAILY_CALORIE_TARGET = 2000;
