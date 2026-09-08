@@ -1,10 +1,19 @@
 // ==========================================
 // 1. CONFIGURATION
 // ==========================================
-// Mengambil kredensial dari config.js
-const SUPABASE_URL = CONFIG.SUPABASE_URL;
-const SUPABASE_ANON_KEY = CONFIG.SUPABASE_ANON_KEY;
-const GEMINI_API_KEY = CONFIG.GEMINI_API_KEY;
+
+// Ambil dari config.js (Lokal/Dev) jika ada, atau gunakan default/environment placeholder jika di Vercel
+const SUPABASE_URL = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_URL)
+    ? CONFIG.SUPABASE_URL
+    : 'https://abcdefg12345.supabase.co'; // Isikan URL Supabase milikmu
+
+const SUPABASE_ANON_KEY = (typeof CONFIG !== 'undefined' && CONFIG.SUPABASE_ANON_KEY)
+    ? CONFIG.SUPABASE_ANON_KEY
+    : 'eyJhbGciOi...';                // Isikan Anon Key Supabase milikmu
+
+const GEMINI_API_KEY = (typeof CONFIG !== 'undefined' && CONFIG.GEMINI_API_KEY)
+    ? CONFIG.GEMINI_API_KEY
+    : 'AIzaSy...';                        // Isikan API Key Gemini baru
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DAILY_CALORIE_TARGET = 2000;
