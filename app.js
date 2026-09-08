@@ -3,7 +3,7 @@
 // ==========================================
 const SUPABASE_URL = 'https://haextoclppbqphsnvvap.supabase.co'; // Ganti dengan Project URL Supabase milikmu
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhZXh0b2NscHBicXBoc252dmFwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg4MjI1MDUsImV4cCI6MjEwNDM5ODUwNX0.IBG7TrdoznZlu0qEBdzN2ZFHrG85Sp0Usu_SLc6xvhw';      // Ganti dengan anon key Supabase milikmu
-const GEMINI_API_KEY = 'AQ.Ab8RN6K_WSR6avA_esmp00QTPNwKTVzWGQq3rcboD0Fg88i_sw';                             // Ganti dengan API key Gemini milikmu (calori-app-tracker)
+const GEMINI_API_KEY = 'AQ.Ab8RN6Ko_jUbrU0hiSap3_6WdZk-iY5t5iL2Q7V8lSVL2f3b0g';                             // Ganti dengan API key Gemini milikmu (calori-app-tracker)
 
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DAILY_CALORIE_TARGET = 2000;
