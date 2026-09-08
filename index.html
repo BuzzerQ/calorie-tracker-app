@@ -26,8 +26,8 @@
         }
     </script>
 
-    <!-- Cukup panggil app.js biasa -->
-    <script type="module" src="app.js"></script>
+    <!-- Supabase JS Client (WAJIB ADA DI HEAD SINI) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body class="bg-gray-900 text-gray-100 font-sans min-h-screen pb-12 antialiased">
@@ -151,14 +151,7 @@
         </div>
     </div>
 
-    <!-- Load Gemini Module & App Logic -->
-    <script type="importmap">
-    {
-      "imports": {
-        "@google/genai": "https://esm.run/@google/genai"
-      }
-    }
-  </script>
+    <!-- Load App Logic -->
     <script type="module" src="app.js"></script>
 </body>
 
